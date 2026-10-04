@@ -1,0 +1,32 @@
+name: daily-trending
+
+on:
+  schedule:
+    - cron: "30 23 * * *"   # 07:30 北京时间
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  trending:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run trending collector
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python trending.py
+
+      - name: Commit & push
+        run: |
+          git config user.name "trending-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "无变化" || git commit -m "trending $(date -u +%F)"
+          git push
