@@ -2,7 +2,7 @@ name: daily-trending
 
 on:
   schedule:
-    - cron: "30 23 * * *"   # 07:30 北京时间
+    - cron: "15 20 * * *"   # 04:15 北京时间
   workflow_dispatch:
 
 permissions:
