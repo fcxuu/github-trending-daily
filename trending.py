@@ -5,9 +5,9 @@
 降级:页面解析失败/条目不足时,回退 GitHub Search API 近似(近30天新仓按 star 排)
 """
 import json, os, re, html, urllib.request
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
-TODAY = date.today().isoformat()
+TODAY = datetime.now(timezone(timedelta(hours=8))).date().isoformat()  # 北京时间
 ROOT = os.path.dirname(os.path.abspath(__file__))
 IDX = os.path.join(ROOT, "data", "index.jsonl")
 UA = {"User-Agent": "Mozilla/5.0 (compatible; trending-daily/1.0)",
@@ -75,7 +75,7 @@ def upsert_md(path, section):
             cur.append(line)
     parts.append("".join(cur))
     body = "".join(p for p in parts if not p.startswith(f"## {TODAY}\n"))
-    month_file = f"{date.today().year}-{date.today().month:02d}.md"
+    month_file = TODAY[:7] + ".md"
     header = "# GitHub Trending Daily · Top 15\n\n每日抓取官方 trending 榜前 15 名。同名小节重跑即替换(幂等)。\n\n"
     with open(path, "w", encoding="utf-8") as f:
         f.write((body if old else header) + section + "\n")
