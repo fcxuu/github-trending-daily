@@ -87,7 +87,7 @@ def main():
         entries = parse_trending(fetch("https://github.com/trending?since=daily"))
     except Exception as e:
         print("trending 页抓取失败:", e)
-    if len(entries) < 10:
+    if len(entries) < 3:
         try:
             entries = fallback_search(token)
             source = "fallback-search"
