@@ -5,6 +5,12 @@ on:
     - cron: "15 20 * * *"   # 04:15 北京时间
   workflow_dispatch:
 
+# 串行化：手动派发与延迟数小时的 schedule 不再同时跑（否则同一天的数据会被写多遍）
+# cancel-in-progress 保持 false —— 排队而不是取消，避免 push 中途被打断
+concurrency:
+  group: dsh-github-trending-daily
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -18,15 +24,30 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: 当日数据是否已存在
+        id: guard
+        run: |
+          TODAY=$(TZ=Asia/Shanghai date +%F)
+          MONTH=$(TZ=Asia/Shanghai date +%Y-%m)
+          if grep -q "^## ${TODAY}\$" "${MONTH}.md" 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::今日(${TODAY})数据已存在，跳过采集"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run trending collector
+        if: steps.guard.outputs.exists != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python trending.py
 
       - name: Commit & push
+        if: steps.guard.outputs.exists != 'true'
         run: |
           git config user.name "fcxuu"
           git config user.email "fcxuu@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet && echo "无变化" || git commit -m "trending $(date -u +%F)"
+          git diff --cached --quiet && echo "无变化" || git commit -m "trending $(TZ=Asia/Shanghai date +%F)"
+          git pull --no-rebase -X ours origin main || true
           git push
