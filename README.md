@@ -11,7 +11,7 @@ data/index.jsonl      # 每日每条一行 JSON,便于后续统计
 
 - **重跑幂等**：同一天重跑会替换当日小节与索引行,不会重复追加
 - **降级策略**：官方页解析失败或条目不足时,回退 GitHub Search API 近似(近 30 天新仓按 star 排),并在日报标注"近似来源"
-- **月度统计**：`data/index.jsonl` 可直接算"连续上榜王"/"周冠军"——每月 1 号顺手跑个统计脚本即可(待加)
+- **月度统计**：`python3 scripts/monthly_stats.py [YYYY-MM]` 直接从 `data/index.jsonl` 产出「上榜次数 Top10 / 最长连续上榜 / 周冠军 / 每日冠军」Markdown 报告，缺省统计最新月份
 
 ## 运行
 
