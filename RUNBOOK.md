@@ -8,26 +8,28 @@
 
 ## 0. 任务清单与归属
 
-| 任务 | 计划 | 旧 id（挂在旧会话 session-fe80c721，待删） | 状态 |
+| 任务 | 计划 | 旧 id（挂在旧会话 session-fe80c721，已删） | 状态 |
 |---|---|---|---|
-| GitHub 日检 + 搜集播报 | daily 04:30 Asia/Shanghai | `schedule-7d3db050-e044-491b-9da4-e6f83aedeb67` | 迁移中 |
-| MemStack 月度记忆清理 | cron `0 2 1 * *` Asia/Shanghai | `schedule-9a5a1c79-c178-48e6-80e1-3ac83123bc37` | 迁移中 |
+| GitHub 日检 + 搜集播报 | daily 02:30 Asia/Shanghai | `schedule-7d3db050-e044-491b-9da4-e6f83aedeb67` | 已迁移 → 本会话 `schedule-168bce49-8b95-4c28-a29e-b13e76c8dfbf` |
+| MemStack 月度记忆清理 | cron `0 2 1 * *` Asia/Shanghai | `schedule-9a5a1c79-c178-48e6-80e1-3ac83123bc37` | 已迁移 → 本会话 `schedule-34bff1f2-b12f-4dba-8db5-64c89bc2dbbf` |
 
 **迁移规则**：`schedule_create` 永远绑定"当前会话"。因此**新会话只负责创建**（第 1 节）；**旧任务删除由旧会话完成**（第 6 节，宿主 RPC schedule/delete 支持跨会话）。新会话不要尝试删除旧任务。
+
+> 2026-10-20 实测补记：宿主 RPC `schedule/delete` 确实支持跨会话删除——带旧任务 id + 旧会话 sessionId 调用即可（会话内 `schedule_delete` 工具则按当前会话隔离，会返回 `schedule_not_found`）。本次两条旧任务已由新会话删除完毕，第 6 节收尾。
 
 ---
 
 ## 1. 任务规格（新会话重建用，逐字使用）
 
-### 1.1 GitHub 日检 + 搜集播报（每日 04:30）
+### 1.1 GitHub 日检 + 搜集播报（每日 02:30）
 
-- title: `GitHub 日检 + 搜集播报（每日 04:30）`
-- kind: `daily`；time: `04:30:00.000`；timeZone: `Asia/Shanghai`
+- title: `GitHub 日检 + 搜集播报（每日 02:30）`
+- kind: `daily`；time: `02:30:00.000`；timeZone: `Asia/Shanghai`
 - prompt（瘦身体，逐字复制）：
 
 ```
 【GitHub 日检 + 每日搜集播报——固定基础任务，无论当前主任务是什么都必须先完成】
-04:30（Asia/Shanghai）触发 = 当日播报发送时刻。两采集仓 Actions（fcxuu/dsh-ecosystem-daily 04:00 / fcxuu/github-trending-daily 04:15，北京时间计划）经常延迟数小时甚至整轮缺席，此刻通常尚未跑完。
+02:30（Asia/Shanghai）触发 = 当日播报发送时刻。此时两采集仓 Actions（fcxuu/dsh-ecosystem-daily 04:00 / fcxuu/github-trending-daily 04:15，北京时间计划）尚未到点，且经常延迟数小时甚至整轮缺席 → 当日远端数据通常还不存在，一律先走本地兜底（第 2.2 节第 2 步），云端随后那轮会被守卫自动跳过，不会重复提交。
 执行流程唯一权威：完整读取 /Users/fuchenxu/Desktop/💻开发/github-trending-daily/RUNBOOK.md，按第 2～4 节逐步执行（含网络绕过、本地兜底、播报格式、rea 哨兵）。
 铁律：先 A 后 B；每天至少一次，不可因主任务跳过；平静日明确说"无重要更新"；每条网络命令必须带超时，防止回合挂死（2026-10-20 04:30 那轮就是挂死的）。
 ```
@@ -101,7 +103,7 @@
 
 ### 2.3 活跃度守护
 
-- 已验证：云端 commit（约 07:3x +08）与 04:30 本地兜底 commit 都会正确落到**当日**贡献格子。
+- 已验证：云端 commit（约 07:3x +08）与 02:30 本地兜底 commit 都会正确落到**当日**贡献格子。
 - 若用户当日格子仍空：做一次**真实**的小提交（README 数据说明补充、`scripts/monthly_stats.py` 输出登记等），**禁止空提交/垃圾提交**。
 
 ---
@@ -139,15 +141,18 @@
 
 ---
 
-## 6. 旧任务清理（仅旧会话执行，新会话勿动）
+## 6. 旧任务清理（2026-10-20 已执行完毕）
 
 新任务创建并核对无误后，由旧会话通过宿主 RPC `schedule/delete` 删除：
 
-- `schedule-7d3db050-e044-491b-9da4-e6f83aedeb67`（daily 04:30）
-- `schedule-9a5a1c79-c178-48e6-80e1-3ac83123bc37`（cron 0 2 1 * *）
+- `schedule-7d3db050-e044-491b-9da4-e6f83aedeb67`（daily 04:30）——已删
+- `schedule-9a5a1c79-c178-48e6-80e1-3ac83123bc37`（cron 0 2 1 * *）——已删
 
 流程：先 `schedule/catalog` 双确认新旧并存 → 逐条 delete → catalog 复查只剩新任务。
+
+2026-10-20 实测：新会话直接调宿主 RPC `schedule/delete`（payload = 旧任务 id + 旧会话 sessionId），两条均返回 `deleted: true`，旧会话 `schedule/list` 归零。
 
 ## 7. 变更记录
 
 - 2026-10-20 v1：由旧会话 session-fe80c721 固化。触发时间 07:30→04:30（2026-10-19 用户要求）；新增网络绕过（2.0）、rea 哨兵（4）、活跃度守护（2.3）、跨会话迁移规则（0/6）。
+- 2026-10-20 v2：触发时间 04:30→02:30（2026-10-20 用户要求）。§1.1 的 title / time / prompt 与 §0 / §2.3 同步；prompt 第 2 行改为「Actions 尚未到点 → 一律本地兜底优先」语义（02:30 时两仓 Actions 计划 04:00 / 04:15 还没开始，当日远端数据通常还不存在）；旧任务清理（§6）已由新会话跨会话 RPC 执行完毕。
