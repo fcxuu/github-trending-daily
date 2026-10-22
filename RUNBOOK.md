@@ -77,6 +77,9 @@
 - git 一律加：`git -c http.version=HTTP/1.1 pull/push`（2–4 秒完成）
 - `gh` 短命令可用（notifications / search issues）；**gh 的 contents API 大 JSON 不可靠，弃用**
 - 任何网络命令挂起超过 25 秒按失败处理，换绕过重试，**绝不无限等待**
+- `gh run view` / `gh run list` 在链路抖动时同样会挂（2026-10-23 实测挂死）→ 改用 curl Actions API：`curl -sS --http1.1 -m 25 -H "Authorization: Bearer $(gh auth token)" https://api.github.com/repos/fcxuu/<repo>/actions/runs/<id>[/jobs]`
+- **run 顶层 status 会滞后**：顶层可能长期停在 `in_progress`，但 `/jobs` 里各步骤已 `completed success` → 以 **jobs 步骤** 判读成败；云端守卫生效的表现是「Run collector」「Commit & push」两步 `skipped`
+- 两个采集仓都是 **private**：raw 取数必须带 `Authorization` 头，否则一律伪装成 404（易误判成"数据不存在"）
 
 ### 2.1 A 段：GitHub 账号日检
 
@@ -96,7 +99,7 @@
    cd "/Users/fuchenxu/Desktop/💻开发/dsh-ecosystem-daily" && GITHUB_TOKEN=$(gh auth token) python3 collector.py && git add -A && git commit -m "daily <日期> (本地兜底)" && git -c http.version=HTTP/1.1 pull --no-rebase -X ours origin main && git -c http.version=HTTP/1.1 push
    ```
 
-   trending 仓同理（跑 `trending.py`）。推完两仓各 `gh workflow run daily.yml -R fcxuu/<repo>` 手动派发云端补一轮（云端守卫会自动跳过已有数据，不会重复提交）。
+   trending 仓同理（跑 `trending.py`）。推完两仓各 `gh workflow run daily.yml -R fcxuu/<repo>` 手动派发云端补一轮（云端守卫会自动跳过已有数据，不会重复提交），再用 `/jobs` 复核守卫是否 skipped；**推送结果一律以 git 侧 `origin/main` 为准**，raw 可能有数分钟 CDN 缓存滞后（带 cache-buster query 再验）。
 
 3. 拉取当日数据（raw 地址同 2.0；trending 若显示"来源:近似搜索/官方页解析失败"，播报里注明数据为近似值）。
 4. 按第 3 节格式交付播报。
