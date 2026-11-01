@@ -92,7 +92,101 @@
 
 1. **先查远端当日数据是否已存在**：
    - 生态：`raw .../dsh-ecosystem-daily/main/data/digests/<当日YYYY-MM-DD>.md`（HTTP 200 = 在）
-   - trending：`raw .../github-trending-daily/main/<当月YYYY-MM>.md` 里是否有 `^## <当日>$` 小节
+   - trending：trending 小节**追加在仓库当前存在的月度 md 文件里**（**不按月滚文件**：2026-11-01 的小节仍在 `2026-10.md` 里）→ 先 `ls` 仓库根的月度 md 文件名，再查是否有 `^## <当日># 自动化 RUNBOOK — 定时任务重建与每日执行手册
+
+> **唯一权威流程文件**：定时任务的 prompt 只保留指针，执行细节一律以本文件为准。
+> 本文件不含任何密钥；命令里的 `gh auth token` 只是占位符，由本机 gh CLI 提供。
+> 固化于 2026-10-20（迁移前由旧会话 session-fe80c721 写定）。
+
+---
+
+## 0. 任务清单与归属
+
+| 任务 | 计划 | 旧 id（挂在旧会话 session-fe80c721，已删） | 状态 |
+|---|---|---|---|
+| GitHub 日检 + 搜集播报 | daily 02:30 Asia/Shanghai | `schedule-7d3db050-e044-491b-9da4-e6f83aedeb67` | 已迁移 → 本会话 `schedule-168bce49-8b95-4c28-a29e-b13e76c8dfbf` |
+| MemStack 月度记忆清理 | cron `0 2 1 * *` Asia/Shanghai | `schedule-9a5a1c79-c178-48e6-80e1-3ac83123bc37` | 已迁移 → 本会话 `schedule-34bff1f2-b12f-4dba-8db5-64c89bc2dbbf` |
+
+**迁移规则**：`schedule_create` 永远绑定"当前会话"。因此**新会话只负责创建**（第 1 节）；**旧任务删除由旧会话完成**（第 5 节，宿主 RPC schedule/delete 支持跨会话）。新会话不要尝试删除旧任务。
+
+> 2026-10-20 实测补记：宿主 RPC `schedule/delete` 确实支持跨会话删除——带旧任务 id + 旧会话 sessionId 调用即可（会话内 `schedule_delete` 工具则按当前会话隔离，会返回 `schedule_not_found`）。本次两条旧任务已由新会话删除完毕，第 5 节收尾。
+
+---
+
+## 1. 任务规格（新会话重建用，逐字使用）
+
+### 1.1 GitHub 日检 + 搜集播报（每日 02:30）
+
+- title: `GitHub 日检 + 搜集播报（每日 02:30）`
+- kind: `daily`；time: `02:30:00.000`；timeZone: `Asia/Shanghai`
+- prompt（瘦身体，逐字复制）：
+
+```
+【GitHub 日检 + 每日搜集播报——固定基础任务，无论当前主任务是什么都必须先完成】
+02:30（Asia/Shanghai）触发 = 当日播报发送时刻。此时两采集仓 Actions（fcxuu/dsh-ecosystem-daily 04:00 / fcxuu/github-trending-daily 04:15，北京时间计划）尚未到点，且经常延迟数小时甚至整轮缺席 → 当日远端数据通常还不存在，一律先走本地兜底（第 2.2 节第 2 步），云端随后那轮会被守卫自动跳过，不会重复提交。
+执行流程唯一权威：完整读取 /Users/fuchenxu/Desktop/💻开发/github-trending-daily/RUNBOOK.md，按第 2～3 节逐步执行（含网络绕过、本地兜底、播报格式）。
+铁律：先 A 后 B；每天至少一次，不可因主任务跳过；平静日明确说"无重要更新"；每条网络命令必须带超时，防止回合挂死（2026-10-20 04:30 那轮就是挂死的）。
+```
+
+### 1.2 MemStack 月度记忆清理
+
+- title: `MemStack 月度记忆清理`
+- kind: `cron`；expression: `0 2 1 * *`；timeZone: `Asia/Shanghai`
+- prompt（原样复制）：
+
+```
+【MemStack 月度清理提醒】每月 1 号到了，请用一条命令帮我过一遍记忆：
+
+1) 先看状态：`mem status`（重点看 candidates_pending、events、index docs）
+2) 审核候选：`mem candidates list --limit 40`，把不重要的 `mem candidates reject <id>`，重要的 `mem candidates accept <id>`
+3) 查看事实：`mem facts list`，过期的用 `mem facts expire <id>`，要删的用 `mem facts forget <id>`
+4) 归档瘦身（可选）：`mem prune-raw --keep 1`（每个会话只留最新归档）+ `mem vacuum`
+5) 体检并重新取证：`mem doctor --deep`，然后 `mem backup`
+
+请先告诉我第 1、2 步的结果，等我确认后再执行 3-5 步；不要自动删除任何东西。
+```
+
+### 1.3 创建后自检（新会话必做）
+
+1. 用 schedule_list 核对两条任务的 title / 时间 / 时区 / prompt 与本节**逐字一致**；
+2. 把两条新任务的 id 报告给用户；
+3. **不要**执行第 5 节；除创建与核对外不做任何其它操作。
+
+---
+
+## 2. 每日执行流程（GitHub 日检 + 播报）
+
+本地路径（2026-10-09 用户整理桌面后的新路径，勿用旧路径）：
+
+- 生态仓 = `/Users/fuchenxu/Desktop/💻开发/dsh-ecosystem-daily`
+- trending 仓 = `/Users/fuchenxu/Desktop/💻开发/github-trending-daily`
+
+### 2.0 网络前置（先于一切 GitHub 调用）
+
+2026-10-18 起 GitHub 链路严重抖动：`gh api` 大响应挂起、curl 报 `Error in the HTTP2 framing layer`、git pull 长时间卡死。已验证的绕过：
+
+- API 探测：`curl -sS --http1.1 -m 25 -H "Authorization: Bearer $(gh auth token)" https://api.github.com/...`
+- 数据文件直接取 raw：
+  `curl -sS --http1.1 -m 25 [-H "Authorization: Bearer $(gh auth token)"] https://raw.githubusercontent.com/fcxuu/<repo>/main/<path>`
+- git 一律加：`git -c http.version=HTTP/1.1 pull/push`（2–4 秒完成）
+- `gh` 短命令可用（notifications / search issues）；**gh 的 contents API 大 JSON 不可靠，弃用**
+- 任何网络命令挂起超过 25 秒按失败处理，换绕过重试，**绝不无限等待**
+- `gh run view` / `gh run list` 在链路抖动时同样会挂（2026-10-23 实测挂死）→ 改用 curl Actions API：`curl -sS --http1.1 -m 25 -H "Authorization: Bearer $(gh auth token)" https://api.github.com/repos/fcxuu/<repo>/actions/runs/<id>[/jobs]`
+- **run 顶层 status 会滞后**：顶层可能长期停在 `in_progress`，但 `/jobs` 里各步骤已 `completed success` → 以 **jobs 步骤** 判读成败；云端守卫生效的表现是「Run collector」「Commit & push」两步 `skipped`
+- 两个采集仓都是 **private**：raw 取数必须带 `Authorization` 头，否则一律伪装成 404（易误判成"数据不存在"）
+
+### 2.1 A 段：GitHub 账号日检
+
+1. 通知：`gh api notifications --jq '.[] | {repo: .repository.full_name, reason, title: .subject.title}'`（空数组 = 无）
+2. 提及：`gh search issues --mentions @fcxuu --limit 10`
+3. 仓库动态：两采集仓最近提交（`repos/fcxuu/<repo>/commits?per_page=2`）；6 仓 open issue / PR 计数（search API：`repo:fcxuu/<R> type:issue state:open` 与 `type:pr`）
+   6 仓 = dsh-ecosystem-daily / github-trending-daily / dsh-balance-meter / memstack / playground / computer-vision-projects
+
+### 2.2 B 段：搜集播报
+
+1. **先查远端当日数据是否已存在**：
+   - 生态：`raw .../dsh-ecosystem-daily/main/data/digests/<当日YYYY-MM-DD>.md`（HTTP 200 = 在）
+ 小节
 2. 数据在 → 直接第 3 步；**不在 → 本地兜底**（顺序铁律：**先 commit 再 pull**，否则 pull 直接 Aborting）：
 
    ```
@@ -149,6 +243,7 @@
 
 ## 6. 变更记录
 
+- 2026-11-01 v6：修正 §2.2 第 1 步——trending 小节**不按月滚文件**（11-01 小节仍写在 `2026-10.md`），须先 `ls` 月度 md 文件再查小节；本日云端计划轮连续第 2 天准点跑成（eco 07:16 / trd 07:25），无需本地兜底，但贡献格子仍为 L0（bot 身份不计格子），按 §2.3 用 eco README 口径说明提交补齐。
 - 2026-10-31 v5：§2.3 修正——云端 commit（github-actions[bot]）不计贡献格子，格子仅由本地提交点亮（2026-10-31 首次纯云端轮实测 L0，经 eco README 文档校正提交 11953b6 补齐至 L1；同轮修正 eco README 过时的 07:00 运行时间为 04:00 CST）。trending 官方页解析失败已连续 5 天（10-27~10-31），播报持续按「近似搜索」口径注明。
 - 2026-10-26 v4：用户决定**撤销 rea 哨兵**（不再重点关注任何单一 repo）。删除原 §4「rea 哨兵」，原 §5/§6/§7 顺延为 §4/§5/§6；§1.1 prompt 改为「按第 2～3 节逐步执行」并去掉「rea 哨兵」；§3 播报格式去掉「rea 状态行」；定时任务 schedule-168bce49-8b95-4c28-a29e-b13e76c8dfbf 的 prompt 同步更新。历史 v1 记录保留原样。
 - 2026-10-20 v1：由旧会话 session-fe80c721 固化。触发时间 07:30→04:30（2026-10-19 用户要求）；新增网络绕过（2.0）、rea 哨兵（4）、活跃度守护（2.3）、跨会话迁移规则（0/6）。
