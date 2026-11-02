@@ -96,7 +96,7 @@ def main():
     if not entries:
         print("今日无数据,跳过(不写空记录)"); return
 
-    md_path = os.path.join(ROOT, f"{date.today().year}-{date.today().month:02d}.md")
+    md_path = os.path.join(ROOT, f"{TODAY[:7]}.md")  # 北京时间自然月：runner(UTC)与本机(Asia/Shanghai)一致
     upsert_md(md_path, build_md_section(entries))
 
     os.makedirs(os.path.dirname(IDX), exist_ok=True)
