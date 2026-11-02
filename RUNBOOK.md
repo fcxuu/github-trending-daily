@@ -101,7 +101,7 @@
 
    trending 仓同理（跑 `trending.py`）。推完两仓各 `gh workflow run daily.yml -R fcxuu/<repo>` 手动派发云端补一轮（云端守卫会自动跳过已有数据，不会重复提交），再用 `/jobs` 复核守卫是否 skipped；**推送结果一律以 git 侧 `origin/main` 为准**，raw 可能有数分钟 CDN 缓存滞后（带 cache-buster query 再验）。
 
-3. 拉取当日数据（raw 地址同 2.0；trending 若显示"来源:近似搜索/官方页解析失败"，播报里注明数据为近似值）。
+3. 拉取当日数据（raw 地址同 2.0）。**trending 若小节尾带「> 来源:近似搜索(官方 trending 页解析失败)」→ 先重跑 `python3 trending.py` 重取官方榜**（幂等替换当日小节，index.jsonl 同日行同步替换）；重跑仍失败才按近似值播报并注明。
 4. 按第 3 节格式交付播报。
 
 ### 2.3 活跃度守护
@@ -148,6 +148,8 @@
 2026-10-20 实测：新会话直接调宿主 RPC `schedule/delete`（payload = 旧任务 id + 旧会话 sessionId），两条均返回 `deleted: true`，旧会话 `schedule/list` 归零。
 
 ## 6. 变更记录
+
+- 2026-11-03 v8：官方 trending 页抓取会因 GitHub 链路抖动偶发失败，脚本自动回退「近似搜索」口径（小节尾注 `> 来源:近似搜索(官方 trending 页解析失败)`、今日星列全为「—」）。**播报前先重跑 `python3 trending.py` 重取官方榜**（幂等替换当日小节 + index.jsonl 同日行），仍失败才按近似值播报并注明。实测：2026-11-03 首跑因连接 443 超时 75s 回退近似，重跑即恢复官方榜（vercel-labs/agent-desktop +2,243 登顶）。
 
 - 2026-11-02 v7：修 trending 月度文件时区错位。根因：`trending.py` 用 `date.today()`（Actions runner = UTC、本机 = Asia/Shanghai）挑文件，而小节日期取北京时间 `TODAY` → 每月 1 号云端轮会把当日小节写进**上一个月**的文件（2026-11-01 小节曾落在 `2026-10.md`，与 `2026-11.md` 分裂），且工作流守卫查的是北京月份文件、采集器写的是 UTC 月份文件，导致 1 号当天守卫失效。修复：采集器改为按北京时间自然月取文件（`TODAY[:7]`），并把 11-01 小节迁回 `2026-11.md`；§2.2 第 1 步措辞同步修正（原写的「不按月滚文件」是误判）。补记：private 仓的 raw CDN 刷新有滞后（本次 push 后 contents API 已正确、raw 仍旧只返回旧内容），复核以 git 侧 / contents API 为准。
 
